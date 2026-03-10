@@ -8,7 +8,7 @@
  *   Alt+O (default, configurable) — Open file picker for session-edited files
  *
  * Commands:
- *   /open-file  — Same as Alt+F
+ *   /open-file  — Same as Alt+O
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -17,10 +17,10 @@ import {
   Key,
   Text,
   matchesKey,
+  fuzzyFilter,
   type SelectItem,
   SelectList,
 } from "@mariozechner/pi-tui";
-import fuzzysort from "fuzzysort";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { homedir } from "node:os";
@@ -173,11 +173,7 @@ type Candidate = {
 
 function rankCandidates(candidates: Candidate[], query: string): Candidate[] {
   if (!query.trim()) return candidates;
-  const results = fuzzysort.go(query, candidates, {
-    key: "search",
-    limit: 200,
-  });
-  return results.map((r) => r.obj);
+  return fuzzyFilter(candidates, query, (c) => c.search);
 }
 
 function toSelectItems(candidates: Candidate[]): SelectItem[] {
