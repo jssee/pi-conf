@@ -1,8 +1,9 @@
 /**
- * Questionnaire Tool - Unified tool for asking single or multiple questions
+ * Questionnaire Tool - Unified tool for asking single or multiple questions.
  *
- * Single question: simple options list
- * Multiple questions: tab bar navigation between questions
+ * - Single question: simple options list
+ * - Multiple questions: tab bar navigation between questions
+ * - Per-question multi-select: select more than one option before continuing
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -31,14 +32,19 @@ interface Question {
   prompt: string;
   options: QuestionOption[];
   allowOther: boolean;
+  multiSelect: boolean;
 }
 
-interface Answer {
-  id: string;
+interface AnswerSelection {
   value: string;
   label: string;
   wasCustom: boolean;
   index?: number;
+}
+
+interface Answer {
+  id: string;
+  selections: AnswerSelection[];
 }
 
 interface QuestionnaireResult {
@@ -69,6 +75,11 @@ const QuestionSchema = Type.Object({
   allowOther: Type.Optional(
     Type.Boolean({ description: "Allow 'Type something' option (default: true)" }),
   ),
+  multiSelect: Type.Optional(
+    Type.Boolean({
+      description: "Allow selecting more than one option before continuing (default: false)",
+    }),
+  ),
 });
 
 const QuestionnaireParams = Type.Object({
@@ -85,12 +96,34 @@ function errorResult(
   };
 }
 
+function selectionText(selection: AnswerSelection): string {
+  if (selection.wasCustom) {
+    return `(wrote) ${selection.label}`;
+  }
+  return selection.index ? `${selection.index}. ${selection.label}` : selection.label;
+}
+
+function answerText(answer: Answer): string {
+  return answer.selections.map(selectionText).join("; ");
+}
+
+function answerSummary(answer: Answer): string {
+  if (answer.selections.length === 1) {
+    const selection = answer.selections[0];
+    if (selection.wasCustom) {
+      return `user wrote: ${selection.label}`;
+    }
+    return `user selected: ${selectionText(selection)}`;
+  }
+  return `user selected: ${answerText(answer)}`;
+}
+
 export default function questionnaire(pi: ExtensionAPI) {
   pi.registerTool({
     name: "questionnaire",
     label: "Questionnaire",
     description:
-      "Ask the user one or more questions. Use for clarifying requirements, getting preferences, or confirming decisions. For single questions, shows a simple option list. For multiple questions, shows a tab-based interface.",
+      "Ask the user one or more questions. Use for clarifying requirements, getting preferences, or confirming decisions. Supports both single-select and multi-select questions.",
     parameters: QuestionnaireParams,
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -106,9 +139,10 @@ export default function questionnaire(pi: ExtensionAPI) {
         ...q,
         label: q.label || `Q${i + 1}`,
         allowOther: q.allowOther !== false,
+        multiSelect: q.multiSelect === true,
       }));
 
-      const isMulti = questions.length > 1;
+      const isMultiQuestionnaire = questions.length > 1;
       const totalTabs = questions.length + 1; // questions + Submit
 
       const result = await ctx.ui.custom<QuestionnaireResult>((tui, theme, _kb, done) => {
@@ -140,21 +174,79 @@ export default function questionnaire(pi: ExtensionAPI) {
         }
 
         function submit(cancelled: boolean) {
-          done({ questions, answers: Array.from(answers.values()), cancelled });
+          const orderedAnswers = questions
+            .map((question) => answers.get(question.id))
+            .filter((answer): answer is Answer => answer !== undefined);
+          done({ questions, answers: orderedAnswers, cancelled });
         }
 
         function currentQuestion(): Question | undefined {
           return questions[currentTab];
         }
 
+        function selectionsFor(questionId: string): AnswerSelection[] {
+          return answers.get(questionId)?.selections ?? [];
+        }
+
+        function customSelectionFor(questionId: string): AnswerSelection | undefined {
+          return selectionsFor(questionId).find((selection) => selection.wasCustom);
+        }
+
+        function sortSelections(selections: AnswerSelection[]): AnswerSelection[] {
+          return [...selections].sort((a, b) => {
+            const aRank = a.wasCustom ? Number.MAX_SAFE_INTEGER : (a.index ?? Number.MAX_SAFE_INTEGER - 1);
+            const bRank = b.wasCustom ? Number.MAX_SAFE_INTEGER : (b.index ?? Number.MAX_SAFE_INTEGER - 1);
+            if (aRank !== bRank) return aRank - bRank;
+            return a.label.localeCompare(b.label);
+          });
+        }
+
+        function replaceSelections(questionId: string, selections: AnswerSelection[]) {
+          if (selections.length === 0) {
+            answers.delete(questionId);
+            return;
+          }
+          answers.set(questionId, { id: questionId, selections: sortSelections(selections) });
+        }
+
         function currentOptions(): RenderOption[] {
           const q = currentQuestion();
           if (!q) return [];
+
           const opts: RenderOption[] = [...q.options];
           if (q.allowOther) {
-            opts.push({ value: "__other__", label: "Type something.", isOther: true });
+            const custom = customSelectionFor(q.id);
+            opts.push({
+              value: "__other__",
+              label: custom ? `Custom answer: ${custom.label}` : "Type something.",
+              description: q.multiSelect
+                ? custom
+                  ? "Enter to edit • Space to remove"
+                  : "Enter to add a custom choice"
+                : undefined,
+              isOther: true,
+            });
           }
           return opts;
+        }
+
+        function optionSelection(option: RenderOption, displayedIndex: number): AnswerSelection {
+          return {
+            value: option.value,
+            label: option.label,
+            wasCustom: false,
+            index: displayedIndex,
+          };
+        }
+
+        function isSelected(questionId: string, option: RenderOption, displayedIndex: number): boolean {
+          const selections = selectionsFor(questionId);
+          if (option.isOther) {
+            return selections.some((selection) => selection.wasCustom);
+          }
+          return selections.some(
+            (selection) => !selection.wasCustom && selection.index === displayedIndex,
+          );
         }
 
         function allAnswered(): boolean {
@@ -162,7 +254,7 @@ export default function questionnaire(pi: ExtensionAPI) {
         }
 
         function advanceAfterAnswer() {
-          if (!isMulti) {
+          if (!isMultiQuestionnaire) {
             submit(false);
             return;
           }
@@ -175,24 +267,84 @@ export default function questionnaire(pi: ExtensionAPI) {
           refresh();
         }
 
-        function saveAnswer(
-          questionId: string,
-          value: string,
-          label: string,
-          wasCustom: boolean,
-          index?: number,
-        ) {
-          answers.set(questionId, { id: questionId, value, label, wasCustom, index });
+        function saveSingleAnswer(questionId: string, selection: AnswerSelection) {
+          replaceSelections(questionId, [selection]);
+        }
+
+        function toggleMultiAnswer(questionId: string, selection: AnswerSelection) {
+          const currentSelections = selectionsFor(questionId);
+          const nextSelections = currentSelections.some(
+            (existing) =>
+              !existing.wasCustom &&
+              !selection.wasCustom &&
+              existing.index === selection.index &&
+              existing.value === selection.value,
+          )
+            ? currentSelections.filter(
+                (existing) =>
+                  existing.wasCustom ||
+                  selection.wasCustom ||
+                  existing.index !== selection.index ||
+                  existing.value !== selection.value,
+              )
+            : [...currentSelections, selection];
+
+          replaceSelections(questionId, nextSelections);
+        }
+
+        function saveCustomAnswer(questionId: string, label: string, multiSelect: boolean) {
+          const customSelection: AnswerSelection = {
+            value: label,
+            label,
+            wasCustom: true,
+          };
+
+          if (!multiSelect) {
+            replaceSelections(questionId, [customSelection]);
+            return;
+          }
+
+          const nextSelections = selectionsFor(questionId).filter((selection) => !selection.wasCustom);
+          nextSelections.push(customSelection);
+          replaceSelections(questionId, nextSelections);
+        }
+
+        function removeCustomAnswer(questionId: string) {
+          const nextSelections = selectionsFor(questionId).filter((selection) => !selection.wasCustom);
+          replaceSelections(questionId, nextSelections);
+        }
+
+        function startOtherInput(question: Question) {
+          inputMode = true;
+          inputQuestionId = question.id;
+          editor.setText(customSelectionFor(question.id)?.label ?? "");
+          refresh();
         }
 
         // Editor submit callback
         editor.onSubmit = (value) => {
           if (!inputQuestionId) return;
+
+          const question = questions.find((candidate) => candidate.id === inputQuestionId);
+          if (!question) {
+            inputMode = false;
+            inputQuestionId = null;
+            editor.setText("");
+            refresh();
+            return;
+          }
+
           const trimmed = value.trim() || "(no response)";
-          saveAnswer(inputQuestionId, trimmed, trimmed, true);
+          saveCustomAnswer(question.id, trimmed, question.multiSelect);
           inputMode = false;
           inputQuestionId = null;
           editor.setText("");
+
+          if (question.multiSelect) {
+            refresh();
+            return;
+          }
+
           advanceAfterAnswer();
         };
 
@@ -215,7 +367,7 @@ export default function questionnaire(pi: ExtensionAPI) {
           const opts = currentOptions();
 
           // Tab navigation (multi-question only)
-          if (isMulti) {
+          if (isMultiQuestionnaire) {
             if (matchesKey(data, Key.tab) || matchesKey(data, Key.right)) {
               currentTab = (currentTab + 1) % totalTabs;
               optionIndex = 0;
@@ -247,22 +399,61 @@ export default function questionnaire(pi: ExtensionAPI) {
             return;
           }
           if (matchesKey(data, Key.down)) {
-            optionIndex = Math.min(opts.length - 1, optionIndex + 1);
+            const maxOptionIndex = Math.max(0, opts.length - 1);
+            optionIndex = Math.min(maxOptionIndex, optionIndex + 1);
             refresh();
             return;
           }
 
-          // Select option
-          if (matchesKey(data, Key.enter) && q) {
-            const opt = opts[optionIndex];
+          if (!q) {
+            if (matchesKey(data, Key.escape)) {
+              submit(true);
+            }
+            return;
+          }
+
+          const opt = opts[optionIndex];
+          if (!opt) {
+            if (matchesKey(data, Key.escape)) {
+              submit(true);
+            }
+            return;
+          }
+
+          // Toggle option for multi-select questions
+          if (q.multiSelect && matchesKey(data, Key.space)) {
             if (opt.isOther) {
-              inputMode = true;
-              inputQuestionId = q.id;
-              editor.setText("");
-              refresh();
+              if (customSelectionFor(q.id)) {
+                removeCustomAnswer(q.id);
+                refresh();
+              } else {
+                startOtherInput(q);
+              }
               return;
             }
-            saveAnswer(q.id, opt.value, opt.label, false, optionIndex + 1);
+
+            toggleMultiAnswer(q.id, optionSelection(opt, optionIndex + 1));
+            refresh();
+            return;
+          }
+
+          // Confirm / continue
+          if (matchesKey(data, Key.enter)) {
+            if (opt.isOther) {
+              startOtherInput(q);
+              return;
+            }
+
+            if (q.multiSelect) {
+              if (answers.has(q.id)) {
+                advanceAfterAnswer();
+              } else {
+                refresh();
+              }
+              return;
+            }
+
+            saveSingleAnswer(q.id, optionSelection(opt, optionIndex + 1));
             advanceAfterAnswer();
             return;
           }
@@ -286,7 +477,7 @@ export default function questionnaire(pi: ExtensionAPI) {
           add(theme.fg("accent", "─".repeat(width)));
 
           // Tab bar (multi-question only)
-          if (isMulti) {
+          if (isMultiQuestionnaire) {
             const tabs: string[] = ["← "];
             for (let i = 0; i < questions.length; i++) {
               const isActive = i === currentTab;
@@ -316,15 +507,12 @@ export default function questionnaire(pi: ExtensionAPI) {
             for (let i = 0; i < opts.length; i++) {
               const opt = opts[i];
               const selected = i === optionIndex;
-              const isOther = opt.isOther === true;
-              const prefix = selected ? theme.fg("accent", "> ") : "  ";
-              const color = selected ? "accent" : "text";
-              // Mark "Type something" differently when in input mode
-              if (isOther && inputMode) {
-                add(prefix + theme.fg("accent", `${i + 1}. ${opt.label} ✎`));
-              } else {
-                add(prefix + theme.fg(color, `${i + 1}. ${opt.label}`));
-              }
+              const selectedPrefix = selected ? theme.fg("accent", "> ") : "  ";
+              const checked = q?.multiSelect ? isSelected(q.id, opt, i + 1) : false;
+              const checkbox = q?.multiSelect ? `[${checked ? "x" : " "}] ` : "";
+              const color = selected ? "accent" : checked ? "success" : "text";
+              const suffix = opt.isOther && inputMode ? " ✎" : "";
+              add(selectedPrefix + theme.fg(color, `${checkbox}${i + 1}. ${opt.label}${suffix}`));
               if (opt.description) {
                 add(`     ${theme.fg("muted", opt.description)}`);
               }
@@ -335,7 +523,6 @@ export default function questionnaire(pi: ExtensionAPI) {
           if (inputMode && q) {
             add(theme.fg("text", ` ${q.prompt}`));
             lines.push("");
-            // Show options for reference
             renderOptions();
             lines.push("");
             add(theme.fg("muted", " Your answer:"));
@@ -343,16 +530,22 @@ export default function questionnaire(pi: ExtensionAPI) {
               add(` ${line}`);
             }
             lines.push("");
-            add(theme.fg("dim", " Enter to submit • Esc to cancel"));
+            add(
+              theme.fg(
+                "dim",
+                q.multiSelect
+                  ? " Enter to save custom choice • Esc to cancel"
+                  : " Enter to submit • Esc to cancel",
+              ),
+            );
           } else if (currentTab === questions.length) {
             add(theme.fg("accent", theme.bold(" Ready to submit")));
             lines.push("");
             for (const question of questions) {
               const answer = answers.get(question.id);
               if (answer) {
-                const prefix = answer.wasCustom ? "(wrote) " : "";
                 add(
-                  `${theme.fg("muted", ` ${question.label}: `)}${theme.fg("text", prefix + answer.label)}`,
+                  `${theme.fg("muted", ` ${question.label}: `)}${theme.fg("text", answerText(answer))}`,
                 );
               }
             }
@@ -361,22 +554,37 @@ export default function questionnaire(pi: ExtensionAPI) {
               add(theme.fg("success", " Press Enter to submit"));
             } else {
               const missing = questions
-                .filter((q) => !answers.has(q.id))
-                .map((q) => q.label)
+                .filter((question) => !answers.has(question.id))
+                .map((question) => question.label)
                 .join(", ");
               add(theme.fg("warning", ` Unanswered: ${missing}`));
             }
           } else if (q) {
             add(theme.fg("text", ` ${q.prompt}`));
+            if (q.multiSelect) {
+              lines.push("");
+              add(theme.fg("muted", " Select one or more choices."));
+            }
             lines.push("");
             renderOptions();
           }
 
           lines.push("");
           if (!inputMode) {
-            const help = isMulti
-              ? " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel"
-              : " ↑↓ navigate • Enter select • Esc cancel";
+            let help = " Esc cancel";
+            if (currentTab === questions.length) {
+              help = isMultiQuestionnaire
+                ? " Tab/←→ navigate • Enter submit • Esc cancel"
+                : " Enter submit • Esc cancel";
+            } else if (q?.multiSelect) {
+              help = isMultiQuestionnaire
+                ? " Tab/←→ navigate • ↑↓ move • Space toggle • Enter continue • Esc cancel"
+                : " ↑↓ move • Space toggle • Enter submit • Esc cancel";
+            } else {
+              help = isMultiQuestionnaire
+                ? " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel"
+                : " ↑↓ navigate • Enter select • Esc cancel";
+            }
             add(theme.fg("dim", help));
           }
           add(theme.fg("accent", "─".repeat(width)));
@@ -401,12 +609,9 @@ export default function questionnaire(pi: ExtensionAPI) {
         };
       }
 
-      const answerLines = result.answers.map((a) => {
-        const qLabel = questions.find((q) => q.id === a.id)?.label || a.id;
-        if (a.wasCustom) {
-          return `${qLabel}: user wrote: ${a.label}`;
-        }
-        return `${qLabel}: user selected: ${a.index}. ${a.label}`;
+      const answerLines = result.answers.map((answer) => {
+        const qLabel = questions.find((q) => q.id === answer.id)?.label || answer.id;
+        return `${qLabel}: ${answerSummary(answer)}`;
       });
 
       return {
@@ -436,12 +641,16 @@ export default function questionnaire(pi: ExtensionAPI) {
       if (details.cancelled) {
         return new Text(theme.fg("warning", "Cancelled"), 0, 0);
       }
-      const lines = details.answers.map((a) => {
-        if (a.wasCustom) {
-          return `${theme.fg("success", "✓ ")}${theme.fg("accent", a.id)}: ${theme.fg("muted", "(wrote) ")}${a.label}`;
-        }
-        const display = a.index ? `${a.index}. ${a.label}` : a.label;
-        return `${theme.fg("success", "✓ ")}${theme.fg("accent", a.id)}: ${display}`;
+      const lines = details.answers.map((answer) => {
+        const selections = answer.selections
+          .map((selection) => {
+            if (selection.wasCustom) {
+              return `${theme.fg("muted", "(wrote) ")}${selection.label}`;
+            }
+            return selection.index ? `${selection.index}. ${selection.label}` : selection.label;
+          })
+          .join(theme.fg("dim", ", "));
+        return `${theme.fg("success", "✓ ")}${theme.fg("accent", answer.id)}: ${selections}`;
       });
       return new Text(lines.join("\n"), 0, 0);
     },
