@@ -294,7 +294,7 @@ export default function (pi: ExtensionAPI) {
       }
     },
 
-    renderCall(args, theme) {
+    renderCall(args, theme, _context) {
       let text = theme.fg("toolTitle", theme.bold("webfetch "));
       text += theme.fg("accent", args.url ?? "");
       if (args.format && args.format !== "markdown") {
@@ -303,7 +303,7 @@ export default function (pi: ExtensionAPI) {
       return new Text(text, 0, 0);
     },
 
-    renderResult(result, { expanded, isPartial }, theme) {
+    renderResult(result, { expanded, isPartial }, theme, _context) {
       const details = result.details as WebfetchDetails | undefined;
 
       if (isPartial) {

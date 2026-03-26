@@ -257,7 +257,6 @@ export default function (pi: ExtensionAPI) {
     handoffPending = false;
     generating = false;
     ctx.ui?.setStatus?.("handoff", "");
-    pi.events.emit("editor:remove-label", { key: "handoff" });
 
     const switchResult = await ctx.newSession({ parentSession: parent });
     if (switchResult.cancelled) return false;
@@ -317,12 +316,6 @@ export default function (pi: ExtensionAPI) {
         "handoff",
         `handoff ready (${Math.round(usage.percent)}%)`,
       );
-      pi.events.emit("editor:set-label", {
-        key: "handoff",
-        text: `handoff ready (${Math.round(usage.percent)}%)`,
-        position: "top",
-        align: "right",
-      });
       ctx.ui.notify(
         `context at ${Math.round(usage.percent)}% — handoff prompt generated. press enter to continue in a new session.`,
         "warning",
@@ -415,7 +408,6 @@ export default function (pi: ExtensionAPI) {
     storedHandoffPrompt = null;
     handoffPending = false;
     generating = false;
-    pi.events.emit("editor:remove-label", { key: "handoff" });
     ctx.ui.setWidget("handoff-provenance", undefined);
   });
 
@@ -435,12 +427,7 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const handoffModel = getHandoffModel(ctx);
       if (!handoffModel) {
-        return {
-          content: [
-            { type: "text", text: "no model available for handoff extraction" },
-          ],
-          isError: true,
-        };
+        throw new Error("no model available for handoff extraction");
       }
 
       parentSessionFile = ctx.sessionManager.getSessionFile();
@@ -452,15 +439,7 @@ export default function (pi: ExtensionAPI) {
         signal ?? undefined,
       );
       if (!prompt) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "handoff generation failed: could not extract context",
-            },
-          ],
-          isError: true,
-        };
+        throw new Error("handoff generation failed: could not extract context");
       }
 
       storedHandoffPrompt = prompt;
@@ -468,12 +447,6 @@ export default function (pi: ExtensionAPI) {
 
       ctx.ui.setEditorText("/handoff");
       ctx.ui.setStatus("handoff", "handoff ready");
-      pi.events.emit("editor:set-label", {
-        key: "handoff",
-        text: "handoff ready",
-        position: "top",
-        align: "right",
-      });
 
       return {
         content: [
@@ -482,6 +455,7 @@ export default function (pi: ExtensionAPI) {
             text: `handoff prompt generated for: "${params.goal}". staged /handoff — press Enter to continue in a new session.`,
           },
         ],
+        details: {},
       };
     },
   });

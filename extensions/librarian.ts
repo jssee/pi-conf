@@ -892,15 +892,7 @@ export default function (pi: ExtensionAPI) {
           content: numbered,
         });
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `read_github error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        throw new Error(`read_github: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
   });
@@ -957,15 +949,7 @@ export default function (pi: ExtensionAPI) {
 
         return asTextResult(entries);
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `list_directory_github error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        throw new Error(`list_directory_github: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
   });
@@ -1034,15 +1018,7 @@ export default function (pi: ExtensionAPI) {
         const limit = params.limit ?? 100;
         return asTextResult(all.slice(offset, offset + limit));
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `glob_github error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        throw new Error(`glob_github: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
   });
@@ -1122,15 +1098,7 @@ export default function (pi: ExtensionAPI) {
           totalCount: Number(data?.total_count ?? 0),
         });
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `search_github error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        throw new Error(`search_github: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
   });
@@ -1252,15 +1220,7 @@ export default function (pi: ExtensionAPI) {
 
         return asTextResult({ commits: mapped, totalCount });
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `commit_search error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        throw new Error(`commit_search: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
   });
@@ -1331,15 +1291,7 @@ export default function (pi: ExtensionAPI) {
           total_commits: Number(data?.total_commits ?? 0),
         });
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `diff error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        throw new Error(`diff: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
   });
@@ -1511,15 +1463,7 @@ export default function (pi: ExtensionAPI) {
           totalCount,
         });
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `list_repositories error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        throw new Error(`list_repositories: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
   });
@@ -1595,15 +1539,7 @@ export default function (pi: ExtensionAPI) {
           },
         };
       } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `librarian error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+        throw new Error(`librarian: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
   });
