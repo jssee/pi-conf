@@ -201,7 +201,21 @@ export default function (pi: ExtensionAPI) {
   }
 
   async function generateHandoffPrompt(
-    ctx: { sessionManager: any; modelRegistry: any },
+    ctx: {
+      sessionManager: any;
+      modelRegistry: {
+        getApiKeyAndHeaders(
+          model: Model<Api>,
+        ): Promise<{
+          ok: true;
+          apiKey?: string;
+          headers?: Record<string, string>;
+        } | {
+          ok: false;
+          error: string;
+        }>;
+      };
+    },
     handoffModel: Model<Api>,
     goal: string,
     signal?: AbortSignal,
@@ -220,7 +234,11 @@ export default function (pi: ExtensionAPI) {
     const conversationText = serializeConversation(llmMessages);
     const sessionId = ctx.sessionManager.getSessionId();
 
-    const apiKey = await ctx.modelRegistry.getApiKey(handoffModel);
+    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(handoffModel);
+    if (!auth.ok) {
+      throw new Error(`handoff auth failed: ${auth.error}`);
+    }
+
     const userMessage: Message = {
       role: "user",
       content: [
@@ -232,7 +250,12 @@ export default function (pi: ExtensionAPI) {
     const response = await complete(
       handoffModel,
       { messages: [userMessage], tools: [HANDOFF_TOOL] },
-      { apiKey, signal, toolChoice: "any" },
+      {
+        apiKey: auth.apiKey,
+        headers: auth.headers,
+        signal,
+        toolChoice: "any",
+      },
     );
 
     if (response.stopReason === "aborted") return null;
