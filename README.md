@@ -1,102 +1,178 @@
 # pi-conf
 
-A [pi package](https://github.com/nicholasgasior/pi-coding-agent) with extensions, skills, and prompt templates.
+A local `pi` package with custom extensions, tools, and prompt templates.
+
+This repo currently ships:
+- custom commands and shortcuts for review, handoff, memory, side conversations, and file navigation
+- custom tools for prior-session lookup, questionnaires, GitHub codebase analysis, and web fetching
+- one prompt template for accessibility and visual design review
+
+## Commands and shortcuts
+
+| Command / shortcut | What it does |
+|---|---|
+| `/answer` or `Ctrl+.` | Extract questions from the last assistant response, then walk through answers in an interactive TUI. |
+| `/btw <message>` | Start or continue a side conversation without affecting the main agent turn. |
+| `/btw:new [message]` | Reset the side thread and optionally start a new one. |
+| `/btw:clear` | Clear the side thread widget and reset the thread. |
+| `/btw:inject [instructions]` | Inject the full side thread back into the main session as follow-up context. |
+| `/btw:summarize [instructions]` | Summarize the side thread, then inject the summary into the main session. |
+| `/cfile` | Write a Vim quickfix file from files edited in the current session; copies the path to the clipboard on macOS. |
+| `/handoff` | Generate a structured handoff draft, create a new session, prefill the editor, then auto-submit after a short countdown unless edited. |
+| `/mem` | Save an instruction into `AGENTS.local.md`, project `AGENTS.md`, or global `~/.pi/agent/AGENTS.md` with AI-assisted merging. |
+| `/remember` | Alias for `/mem`. |
+| `/open-file` or `Alt+O` | Fuzzy-pick a file edited in the current session and open it in your editor. |
+| `/review` | Start a code review for uncommitted changes, a base branch, a commit, a PR, or custom instructions. |
+| `/end-review` | End a review branch, optionally summarize it, then return to the original session position. |
+
+## Custom tools
+
+| Tool | What it does |
+|---|---|
+| `session_query` | Ask focused questions about a prior session `.jsonl` file. Registered by `extensions/handoff.ts`. |
+| `questionnaire` | Ask one or more interactive single-select or multi-select questions. |
+| `webfetch` | Fetch a URL as markdown, text, or raw HTML. Large output is truncated with the full output written to a temp file. |
+| `read_github` | Read a file from a GitHub repo with optional line ranges. |
+| `list_directory_github` | List a directory in a GitHub repo. |
+| `glob_github` | Match files in a GitHub repo by glob. |
+| `search_github` | Search code in a GitHub repo and return grouped snippets. |
+| `commit_search` | Search GitHub commit history. |
+| `diff` | Compare two GitHub refs, optionally with patches. |
+| `list_repositories` | Search repositories, preferring repos accessible to the authenticated user. |
+| `librarian` | Run a GitHub-focused subagent for multi-repo codebase analysis. |
 
 ## Extensions
 
-### `/review` — Code Review
+### `extensions/answer.ts`
+Interactive question extraction.
 
-Full-featured code review that supports multiple targets:
+- command: `/answer`
+- shortcut: `Ctrl+.`
+- reads the last completed assistant message
+- prefers `gpt-5.1-codex-mini`, then `claude-haiku-4-5`, then falls back to the active model
+- opens a custom TUI to answer extracted questions one by one
 
-- **Pull requests** — checks out the PR locally via `gh`, diffs against the merge base
-- **Base branch** — PR-style review against any local branch
-- **Uncommitted changes** — staged, unstaged, and untracked files
-- **Specific commit** — review a single commit by SHA
-- **Custom instructions** — free-form review prompt
+### `extensions/btw.ts`
+Side-channel conversation widget.
 
-Reviews run in a fresh session branch. When finished, `/end-review` summarizes findings and returns to your original position.
+- keeps a separate thread while the main agent keeps working
+- persists side-thread entries in the session as custom entries
+- can inject the raw thread or an LLM summary back into the main session
+- commands: `/btw`, `/btw:new`, `/btw:clear`, `/btw:inject`, `/btw:summarize`
 
-If a `REVIEW_GUIDELINES.md` file exists next to `.pi/`, its contents are appended to the review prompt.
+### `extensions/cfile.ts`
+Vim quickfix export for files changed in the current session.
 
-```
-/review                              # interactive selector
-/review pr 123                       # review PR #123
-/review pr https://github.com/o/r/pull/123
-/review uncommitted                  # review working tree
-/review branch main                  # diff against main
-/review commit abc123                # review one commit
-/review custom "check for XSS"       # custom instructions
-```
+- scans `edit` and `write` tool usage from the session branch
+- emits one quickfix entry per edit hunk, or line 1 for `write`
+- writes to a temp file named like `pi-qf-<session>-<timestamp>.qf`
+- copies the output path to the clipboard on macOS via `pbcopy`
 
-### `/answer` — Question Extraction & Interactive Q&A
+### `extensions/handoff.ts`
+Session handoff workflow plus prior-session lookup.
 
-Extracts questions from the last assistant message and presents an interactive TUI for answering them one by one.
+- command: `/handoff`
+- tool: `session_query`
+- generates a structured handoff document from the current conversation
+- opens a new session with `parentSession` set
+- prefills the new editor and auto-submits after 10 seconds unless the user edits or cancels
+- clears pending auto-submit state on session changes and shutdown
 
-Uses a lightweight model (Codex mini or Haiku) for extraction when available, falling back to the active model.
+### `extensions/librarian.ts`
+GitHub analysis tools plus a `librarian` subagent tool.
 
-Also bound to `Ctrl+.`.
+- wraps GitHub CLI API access behind repo-safe tools
+- normalizes repo names, paths, and search inputs
+- spawns an isolated `pi` subagent for broader analysis
+- requires `gh` to be installed and authenticated
 
-```
-/answer
-```
+### `extensions/memory.ts`
+Persistent memory writer for `AGENTS.md` files.
 
-### `/handoff` — Context Transfer
+- commands: `/mem`, `/remember`
+- prompts for the instruction text, then asks where to save it
+- merges the instruction into existing markdown with the active model
+- previews the result before writing
+- auto-adds `AGENTS.local.md` to `.gitignore`
 
-Generates a focused prompt that captures the current session's decisions, files, and findings, then opens a new session with that prompt pre-filled for editing.
+### `extensions/minimial-mode.ts`
+Demo extension that re-registers built-in tools with a more minimal renderer.
 
-Useful when a session has grown long and you want to start fresh without losing context.
+- file name is currently `minimial-mode.ts` in the repo
+- overrides `read`, `bash`, `edit`, `write`, `find`, `grep`, and `ls`
+- collapsed mode hides or compresses tool output; expanded mode shows full output
+- example/demo extension, not a new standalone command
 
-```
-/handoff now implement this for teams as well
-/handoff execute phase one of the plan
-```
+### `extensions/notify.ts`
+Desktop notifications on `agent_end`.
 
-### `/mem` — Persistent Memory
+- sends OSC 777 notifications with the last assistant text when available
+- supported terminals, per source comments: Ghostty, iTerm2, WezTerm, rxvt-unicode
+- not supported, per source comments: Kitty, Terminal.app, Windows Terminal, Alacritty
 
-Saves instructions to `AGENTS.md` files with AI-assisted integration. An AI merges your instruction into the existing file structure so related rules stay grouped.
+### `extensions/open-session-file.ts`
+Open a file edited in the current session.
 
-Three save locations:
+- command: `/open-file`
+- shortcut: `Alt+O` by default
+- fuzzy-picks files referenced by `edit` and `write` tool calls in the current session
+- respects config from env vars and `settings.json`
+- supports foreground or background open modes
 
-| Location | File | Scope |
-|----------|------|-------|
-| Project Local | `AGENTS.local.md` | Gitignored, personal |
-| Project | `AGENTS.md` | Shared with team |
-| Global | `~/.pi/agent/AGENTS.md` | All projects |
+Supported settings:
+- `PI_OPEN_FILE_COMMAND`
+- `PI_OPEN_FILE_MODE`
+- `PI_OPEN_FILE_SHORTCUT`
+- `openSessionFiles` in global or project `settings.json`
 
-Also available as `/remember`.
+### `extensions/questionnaire.ts`
+Interactive clarification tool.
 
-```
-/mem    # prompts for instruction text, then location
-```
+- tool: `questionnaire`
+- supports one or many questions
+- supports per-question multi-select and custom freeform answers
+- returns structured answers in tool details and a readable summary in tool output
 
-### `/cfile` — Vim Quickfix File
+### `extensions/review.ts`
+Interactive code review workflow.
 
-Scans the current session for files changed by `edit` and `write` tool calls, then writes a quickfix-format file. The output path is copied to the clipboard. Load in vim/nvim with `:cfile <path>`.
+- commands: `/review`, `/end-review`
+- review targets:
+  - uncommitted changes
+  - diff against a base branch
+  - a specific commit
+  - a GitHub PR checked out locally via `gh pr checkout`
+  - custom review instructions
+- supports review in the current session or a fresh review branch
+- persists review state in session entries and shows a review widget while active
+- loads `REVIEW_GUIDELINES.md` if it finds one next to a `.pi/` directory
 
-```
-/cfile
-```
+### `extensions/session-name.ts`
+Automatic session naming.
 
-### Desktop Notifications
+- listens on the first meaningful `input`
+- skips slash commands and very short inputs
+- prefers `google/gemini-flash-latest`, falling back to the active model
+- sets a short lowercase session title once per session
 
-Sends a native desktop notification when the agent finishes a turn and is waiting for input. Uses the OSC 777 escape sequence — no dependencies.
+### `extensions/webfetch/index.ts`
+HTTP fetch tool for docs and web pages.
 
-Supported terminals: Ghostty, iTerm2, WezTerm, rxvt-unicode.
+- tool: `webfetch`
+- formats: `markdown` (default), `text`, `html`
+- timeout: default 30s, max 120s
+- max response size: 5 MB
+- uses `turndown` for HTML → markdown conversion
+- strips some known tooltip/popover noise before markdown conversion
+- returns image fetches as metadata only, not binary payloads
 
-## Skills
+## Prompt templates
 
-### `commit`
+### `prompts/rams.md`
+A design-review prompt template for accessibility and visual design.
 
-Commit message conventions: conventional commit format, branch naming, imperative mood, issue references. Checks `git log` for existing style before applying defaults.
+Focus areas:
+- WCAG 2.1 accessibility checks
+- layout, spacing, typography, contrast, and state coverage
+- issue reporting with severity, snippets, and suggested fixes
 
-### `reducing-entropy`
-
-Bias toward deletion. Measures success by total code in the final codebase, not effort to get there. Loads reference mindsets from `references/` before evaluating.
-
-### `writing-clearly-and-concisely`
-
-Applies Strunk's *Elements of Style* rules and flags common AI writing patterns. Reference sections can be loaded individually to save context.
-
-### `simplify`
-
-Post-implementation cleanup pass. Refines recently modified code for clarity and consistency without changing behavior. Focuses on flattening nesting, removing redundancy, and following project conventions.
