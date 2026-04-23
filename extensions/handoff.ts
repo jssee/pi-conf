@@ -534,22 +534,28 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
+      // ctx.newSession() tears down the current extension runtime; any use of
+      // the outer ctx after the await is bound to a dead session. All work that
+      // must run in the replacement session goes in withSession(newCtx).
       const next = await ctx.newSession({
         parentSession: currentSessionFile,
+        withSession: async (newCtx) => {
+          const newSessionFile = newCtx.sessionManager.getSessionFile();
+          if (newSessionFile) {
+            newCtx.ui.notify(
+              `Switched to new session: ${newSessionFile}`,
+              "info",
+            );
+          }
+
+          newCtx.ui.setEditorText(editedPrompt);
+          startCountdown(newCtx);
+        },
       });
 
       if (next.cancelled) {
         ctx.ui.notify("New session cancelled", "info");
-        return;
       }
-
-      const newSessionFile = ctx.sessionManager.getSessionFile();
-      if (newSessionFile) {
-        ctx.ui.notify(`Switched to new session: ${newSessionFile}`, "info");
-      }
-
-      ctx.ui.setEditorText(editedPrompt);
-      startCountdown(ctx);
     },
   });
 }
