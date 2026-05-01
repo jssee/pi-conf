@@ -1,0 +1,86 @@
+{
+  "$schema": "https://raw.githubusercontent.com/badlogic/pi-mono/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
+  "name": "Ember",
+  "vars": {
+    "bg": "#1c1b19",
+    "bgSoft": "#242320",
+    "bgSofter": "#2b2925",
+    "fg": "#d8d0c0",
+    "muted": "#9c9488",
+    "dim": "#6f695f",
+    "coral": "#e08060",
+    "orange": "#c09058",
+    "gold": "#c8b468",
+    "olive": "#8a9868",
+    "sage": "#80a090",
+    "steel": "#7890a0",
+    "rose": "#b07878",
+    "roseBright": "#c08080",
+    "mauve": "#988090"
+  },
+  "colors": {
+    "accent": "coral",
+    "border": "orange",
+    "borderAccent": "coral",
+    "borderMuted": "dim",
+    "success": "olive",
+    "error": "roseBright",
+    "warning": "gold",
+    "muted": "muted",
+    "dim": "dim",
+    "text": "fg",
+    "thinkingText": "muted",
+
+    "selectedBg": "#38332d",
+    "userMessageBg": "bgSoft",
+    "userMessageText": "fg",
+    "customMessageBg": "bgSoft",
+    "customMessageText": "fg",
+    "customMessageLabel": "coral",
+    "toolPendingBg": "bgSoft",
+    "toolSuccessBg": "#22281f",
+    "toolErrorBg": "#2b211f",
+    "toolTitle": "gold",
+    "toolOutput": "fg",
+
+    "mdHeading": "coral",
+    "mdLink": "coral",
+    "mdLinkUrl": "muted",
+    "mdCode": "gold",
+    "mdCodeBlock": "fg",
+    "mdCodeBlockBorder": "dim",
+    "mdQuote": "muted",
+    "mdQuoteBorder": "dim",
+    "mdHr": "dim",
+    "mdListBullet": "orange",
+
+    "toolDiffAdded": "olive",
+    "toolDiffRemoved": "roseBright",
+    "toolDiffContext": "muted",
+
+    "syntaxComment": "dim",
+    "syntaxKeyword": "coral",
+    "syntaxFunction": "gold",
+    "syntaxVariable": "fg",
+    "syntaxString": "olive",
+    "syntaxNumber": "orange",
+    "syntaxType": "gold",
+    "syntaxOperator": "coral",
+    "syntaxPunctuation": "muted",
+
+    "thinkingOff": "dim",
+    "thinkingMinimal": "muted",
+    "thinkingLow": "steel",
+    "thinkingMedium": "sage",
+    "thinkingHigh": "mauve",
+    "thinkingXhigh": "coral",
+
+    "bashMode": "orange"
+  },
+  "export": {
+    "pageBg": "#1c1b19",
+    "cardBg": "#242320",
+    "infoBg": "#38332d"
+  }
+}
+
