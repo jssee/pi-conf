@@ -44,18 +44,23 @@ export default function (pi: ExtensionAPI) {
       .catch(() => {});
   });
 
-  pi.on("session_switch", async () => {
+  pi.on("session_start", async () => {
     named = false;
   });
 }
 
 async function generateName(
   model: Model<Api>,
-  registry: { getApiKey(model: Model<Api>): Promise<string | undefined> },
+  registry: {
+    getApiKeyAndHeaders(model: Model<Api>): Promise<
+      | { ok: true; apiKey?: string; headers?: Record<string, string> }
+      | { ok: false; error: string }
+    >;
+  },
   userMessage: string,
 ): Promise<string | null> {
-  const apiKey = await registry.getApiKey(model);
-  if (!apiKey) return null;
+  const auth = await registry.getApiKeyAndHeaders(model);
+  if (!auth.ok || !auth.apiKey) return null;
 
   const message: Message = {
     role: "user",
@@ -71,7 +76,7 @@ async function generateName(
   const response = await complete(
     model,
     { messages: [message] },
-    { apiKey, maxTokens: 20 },
+    { apiKey: auth.apiKey, headers: auth.headers, maxTokens: 20 },
   );
   if (response.stopReason === "aborted") return null;
 

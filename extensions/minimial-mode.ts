@@ -18,13 +18,13 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
-  createBashTool,
-  createEditTool,
-  createFindTool,
-  createGrepTool,
-  createLsTool,
-  createReadTool,
-  createWriteTool,
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createFindToolDefinition,
+  createGrepToolDefinition,
+  createLsToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { homedir } from "os";
@@ -45,13 +45,13 @@ const toolCache = new Map<string, ReturnType<typeof createBuiltInTools>>();
 
 function createBuiltInTools(cwd: string) {
   return {
-    read: createReadTool(cwd),
-    bash: createBashTool(cwd),
-    edit: createEditTool(cwd),
-    write: createWriteTool(cwd),
-    find: createFindTool(cwd),
-    grep: createGrepTool(cwd),
-    ls: createLsTool(cwd),
+    read: createReadToolDefinition(cwd),
+    bash: createBashToolDefinition(cwd),
+    edit: createEditToolDefinition(cwd),
+    write: createWriteToolDefinition(cwd),
+    find: createFindToolDefinition(cwd),
+    grep: createGrepToolDefinition(cwd),
+    ls: createLsToolDefinition(cwd),
   };
 }
 
@@ -77,7 +77,7 @@ export default function (pi: ExtensionAPI) {
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const tools = getBuiltInTools(ctx.cwd);
-      return tools.read.execute(toolCallId, params, signal, onUpdate);
+      return tools.read.execute(toolCallId, params, signal, onUpdate, ctx);
     },
 
     renderCall(args, theme, _context) {
@@ -136,7 +136,7 @@ export default function (pi: ExtensionAPI) {
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const tools = getBuiltInTools(ctx.cwd);
-      return tools.bash.execute(toolCallId, params, signal, onUpdate);
+      return tools.bash.execute(toolCallId, params, signal, onUpdate, ctx);
     },
 
     renderCall(args, theme, _context) {
@@ -191,7 +191,7 @@ export default function (pi: ExtensionAPI) {
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const tools = getBuiltInTools(ctx.cwd);
-      return tools.write.execute(toolCallId, params, signal, onUpdate);
+      return tools.write.execute(toolCallId, params, signal, onUpdate, ctx);
     },
 
     renderCall(args, theme, _context) {
@@ -240,7 +240,7 @@ export default function (pi: ExtensionAPI) {
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const tools = getBuiltInTools(ctx.cwd);
-      return tools.edit.execute(toolCallId, params, signal, onUpdate);
+      return tools.edit.execute(toolCallId, params, signal, onUpdate, ctx);
     },
 
     renderCall(args, theme, _context) {
@@ -291,7 +291,7 @@ export default function (pi: ExtensionAPI) {
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const tools = getBuiltInTools(ctx.cwd);
-      return tools.find.execute(toolCallId, params, signal, onUpdate);
+      return tools.find.execute(toolCallId, params, signal, onUpdate, ctx);
     },
 
     renderCall(args, theme, _context) {
@@ -352,7 +352,7 @@ export default function (pi: ExtensionAPI) {
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const tools = getBuiltInTools(ctx.cwd);
-      return tools.grep.execute(toolCallId, params, signal, onUpdate);
+      return tools.grep.execute(toolCallId, params, signal, onUpdate, ctx);
     },
 
     renderCall(args, theme, _context) {
@@ -417,7 +417,7 @@ export default function (pi: ExtensionAPI) {
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const tools = getBuiltInTools(ctx.cwd);
-      return tools.ls.execute(toolCallId, params, signal, onUpdate);
+      return tools.ls.execute(toolCallId, params, signal, onUpdate, ctx);
     },
 
     renderCall(args, theme, _context) {

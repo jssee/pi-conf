@@ -6,7 +6,7 @@ import {
   formatSize,
 } from "@mariozechner/pi-coding-agent";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { Text } from "@mariozechner/pi-tui";
 import TurndownService from "turndown";
 import { mkdtempSync, writeFileSync } from "node:fs";

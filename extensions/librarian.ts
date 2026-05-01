@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 const MAX_FILE_BYTES = 128 * 1024;
 const MAX_PATCH_CHARS = 4096;

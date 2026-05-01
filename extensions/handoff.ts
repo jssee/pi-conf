@@ -12,7 +12,7 @@ import {
   serializeConversation,
 } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
