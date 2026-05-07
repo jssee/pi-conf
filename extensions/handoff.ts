@@ -1,4 +1,4 @@
-import { complete, type Api, type Message, type Model } from "@mariozechner/pi-ai";
+import { complete, type Message } from "@mariozechner/pi-ai";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -16,10 +16,10 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { resolveModel } from "./lib/model-profiles";
 
 const STATUS_KEY = "handoff";
 const COUNTDOWN_SECONDS = 10;
-const HANDOFF_MODEL = { provider: "google", id: "gemini-flash-lite-latest" } as const;
 
 const SYSTEM_PROMPT = `You are a context transfer assistant.
 
@@ -125,26 +125,6 @@ function sessionPathAllowed(candidate: string, sessionsRoot: string | undefined)
   const root = path.resolve(sessionsRoot);
   const resolved = path.resolve(candidate);
   return resolved === root || resolved.startsWith(`${root}${path.sep}`);
-}
-
-async function selectHandoffModel(
-  currentModel: Model<Api>,
-  modelRegistry: {
-    find: (provider: string, modelId: string) => Model<Api> | undefined;
-    getApiKeyAndHeaders(
-      model: Model<Api>,
-    ): Promise<
-      { ok: true; apiKey?: string; headers?: Record<string, string> } | { ok: false; error: string }
-    >;
-  },
-): Promise<Model<Api>> {
-  const handoffModel = modelRegistry.find(HANDOFF_MODEL.provider, HANDOFF_MODEL.id);
-  if (!handoffModel) return currentModel;
-
-  const auth = await modelRegistry.getApiKeyAndHeaders(handoffModel);
-  if (!auth.ok || !auth.apiKey) return currentModel;
-
-  return handoffModel;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -444,10 +424,9 @@ export default function (pi: ExtensionAPI) {
         loader.onAbort = () => done(null);
 
         const run = async () => {
-          const model = await selectHandoffModel(ctx.model!, ctx.modelRegistry);
-          const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-          if (!auth.ok || !auth.apiKey) {
-            throw new Error(auth.ok ? `No API key for ${model.provider}` : auth.error);
+          const resolved = await resolveModel(ctx, "fast");
+          if (!resolved.ok) {
+            throw new Error(resolved.error);
           }
 
           const userMessage: Message = {
@@ -462,11 +441,11 @@ export default function (pi: ExtensionAPI) {
           };
 
           const response = await complete(
-            model,
+            resolved.model,
             { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
             {
-              apiKey: auth.apiKey,
-              headers: auth.headers,
+              apiKey: resolved.apiKey,
+              headers: resolved.headers,
               signal: loader.signal,
             },
           );
