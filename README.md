@@ -4,14 +4,14 @@ A local `pi` package with custom extensions, tools, and prompt templates.
 
 This repo currently ships:
 - custom commands and shortcuts for review, handoff, memory, side conversations, and file navigation
-- custom tools for prior-session lookup, questionnaires, GitHub codebase analysis, and web fetching
+- custom tools for prior-session lookup, Q&A, GitHub codebase analysis, and web fetching
 - one prompt template for accessibility and visual design review
 
 ## Commands and shortcuts
 
 | Command / shortcut | What it does |
 |---|---|
-| `/answer` or `Ctrl+.` | Extract questions from the last assistant response, then walk through answers in an interactive TUI. |
+| `/answers` or `Ctrl+.` | Extract questions from the last assistant response, then answer them in the shared questions TUI. |
 | `/btw <message>` | Start or continue a side conversation without affecting the main agent turn. |
 | `/btw:new [message]` | Reset the side thread and optionally start a new one. |
 | `/btw:clear` | Clear the side thread widget and reset the thread. |
@@ -30,7 +30,7 @@ This repo currently ships:
 | Tool | What it does |
 |---|---|
 | `session_query` | Ask focused questions about a prior session `.jsonl` file. Registered by `extensions/handoff.ts`. |
-| `questionnaire` | Ask one or more interactive single-select or multi-select questions. |
+| `questions` | Ask one or more interactive single-select, multi-select, or freeform questions. |
 | `webfetch` | Fetch a URL as markdown, text, or raw HTML. Large output is truncated with the full output written to a temp file. |
 | `read_github` | Read a file from a GitHub repo with optional line ranges. |
 | `list_directory_github` | List a directory in a GitHub repo. |
@@ -43,14 +43,15 @@ This repo currently ships:
 
 ## Extensions
 
-### `extensions/answer.ts`
-Interactive question extraction.
+### `extensions/qna.ts`
+Q&A workflow.
 
-- command: `/answer`
+- tool: `questions`
+- command: `/answers`
 - shortcut: `Ctrl+.`
-- reads the last completed assistant message
-- prefers `gpt-5.1-codex-mini`, then `claude-haiku-4-5`, then falls back to the active model
-- opens a custom TUI to answer extracted questions one by one
+- the tool asks one or more interactive single-select, multi-select, or freeform questions
+- `/answers` extracts questions from the last completed assistant message, then asks them with the same TUI
+- extraction prefers `gpt-5.1-codex-mini`, then `claude-haiku-4-5`, then falls back to the active model
 
 ### `extensions/btw.ts`
 Side-channel conversation widget.
@@ -124,14 +125,6 @@ Supported settings:
 - `PI_OPEN_FILE_MODE`
 - `PI_OPEN_FILE_SHORTCUT`
 - `openSessionFiles` in global or project `settings.json`
-
-### `extensions/questionnaire.ts`
-Interactive clarification tool.
-
-- tool: `questionnaire`
-- supports one or many questions
-- supports per-question multi-select and custom freeform answers
-- returns structured answers in tool details and a readable summary in tool output
 
 ### `extensions/review.ts`
 Interactive code review workflow.
