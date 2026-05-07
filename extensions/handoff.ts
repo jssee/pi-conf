@@ -330,6 +330,7 @@ export default function (pi: ExtensionAPI) {
 
       const conversationText = serializeConversation(convertToLlm(messages));
       try {
+        // Session queries should use the active model, not a background profile.
         const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
         if (!auth.ok || !auth.apiKey) {
           return error(auth.ok ? `No API key for ${ctx.model.provider}` : auth.error);
