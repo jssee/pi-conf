@@ -1,4 +1,4 @@
-import { complete, type Message } from "@mariozechner/pi-ai";
+import { complete, type Api, type Message, type Model } from "@mariozechner/pi-ai";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -19,6 +19,7 @@ import * as path from "node:path";
 
 const STATUS_KEY = "handoff";
 const COUNTDOWN_SECONDS = 10;
+const HANDOFF_MODEL = { provider: "google", id: "gemini-flash-lite-latest" } as const;
 
 const SYSTEM_PROMPT = `You are a context transfer assistant.
 
@@ -89,10 +90,7 @@ function isEditableInput(data: string): boolean {
 }
 
 function statusLine(ctx: ExtensionContext, seconds: number): string {
-  const accent = ctx.ui.theme.fg(
-    "accent",
-    `handoff auto-submit in ${seconds}s`,
-  );
+  const accent = ctx.ui.theme.fg("accent", `handoff auto-submit in ${seconds}s`);
   const hint = ctx.ui.theme.fg("dim", "(type to edit, Esc to cancel)");
   return `${accent} ${hint}`;
 }
@@ -116,23 +114,37 @@ function getFallbackSessionsRoot(): string | undefined {
   return fs.existsSync(candidate) ? candidate : undefined;
 }
 
-function normalizeSessionPath(
-  sessionPath: string,
-  sessionsRoot: string | undefined,
-): string {
+function normalizeSessionPath(sessionPath: string, sessionsRoot: string | undefined): string {
   if (path.isAbsolute(sessionPath)) return path.resolve(sessionPath);
   if (sessionsRoot) return path.resolve(sessionsRoot, sessionPath);
   return path.resolve(sessionPath);
 }
 
-function sessionPathAllowed(
-  candidate: string,
-  sessionsRoot: string | undefined,
-): boolean {
+function sessionPathAllowed(candidate: string, sessionsRoot: string | undefined): boolean {
   if (!sessionsRoot) return true;
   const root = path.resolve(sessionsRoot);
   const resolved = path.resolve(candidate);
   return resolved === root || resolved.startsWith(`${root}${path.sep}`);
+}
+
+async function selectHandoffModel(
+  currentModel: Model<Api>,
+  modelRegistry: {
+    find: (provider: string, modelId: string) => Model<Api> | undefined;
+    getApiKeyAndHeaders(
+      model: Model<Api>,
+    ): Promise<
+      { ok: true; apiKey?: string; headers?: Record<string, string> } | { ok: false; error: string }
+    >;
+  },
+): Promise<Model<Api>> {
+  const handoffModel = modelRegistry.find(HANDOFF_MODEL.provider, HANDOFF_MODEL.id);
+  if (!handoffModel) return currentModel;
+
+  const auth = await modelRegistry.getApiKeyAndHeaders(handoffModel);
+  if (!auth.ok || !auth.apiKey) return currentModel;
+
+  return handoffModel;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -254,8 +266,7 @@ export default function (pi: ExtensionAPI) {
     label: "Session Query",
     description:
       "Query a prior pi session file. Use when handoff prompt references a parent session and you need details.",
-    promptSnippet:
-      "Query an older pi session file for facts needed by the current thread",
+    promptSnippet: "Query an older pi session file for facts needed by the current thread",
     promptGuidelines: [
       "Use this when a handoff references a parent session and you need concrete details from that older session.",
       "Ask focused factual questions; do not use this as a generic search over unrelated sessions.",
@@ -269,12 +280,8 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const currentSessionFile = ctx.sessionManager.getSessionFile();
-      const sessionsRoot =
-        getSessionsRoot(currentSessionFile) ?? getFallbackSessionsRoot();
-      const resolvedPath = normalizeSessionPath(
-        params.sessionPath,
-        sessionsRoot,
-      );
+      const sessionsRoot = getSessionsRoot(currentSessionFile) ?? getFallbackSessionsRoot();
+      const resolvedPath = normalizeSessionPath(params.sessionPath, sessionsRoot);
 
       const error = (text: string) => ({
         content: [{ type: "text" as const, text }],
@@ -291,15 +298,11 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (!resolvedPath.endsWith(".jsonl")) {
-        return error(
-          `Invalid session path (expected .jsonl): ${params.sessionPath}`,
-        );
+        return error(`Invalid session path (expected .jsonl): ${params.sessionPath}`);
       }
 
       if (!sessionPathAllowed(resolvedPath, sessionsRoot)) {
-        return error(
-          `Session path outside allowed sessions directory: ${params.sessionPath}`,
-        );
+        return error(`Session path outside allowed sessions directory: ${params.sessionPath}`);
       }
 
       if (!fs.existsSync(resolvedPath)) {
@@ -331,17 +334,12 @@ export default function (pi: ExtensionAPI) {
 
       const branch = sessionManager.getBranch();
       const messages = branch
-        .filter(
-          (entry): entry is SessionEntry & { type: "message" } =>
-            entry.type === "message",
-        )
+        .filter((entry): entry is SessionEntry & { type: "message" } => entry.type === "message")
         .map((entry) => entry.message);
 
       if (messages.length === 0) {
         return {
-          content: [
-            { type: "text" as const, text: "Session has no messages." },
-          ],
+          content: [{ type: "text" as const, text: "Session has no messages." }],
           details: { empty: true, sessionPath: resolvedPath },
         };
       }
@@ -354,9 +352,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
         if (!auth.ok || !auth.apiKey) {
-          return error(
-            auth.ok ? `No API key for ${ctx.model.provider}` : auth.error,
-          );
+          return error(auth.ok ? `No API key for ${ctx.model.provider}` : auth.error);
         }
 
         const userMessage: Message = {
@@ -387,9 +383,7 @@ export default function (pi: ExtensionAPI) {
           .trim();
 
         return {
-          content: [
-            { type: "text" as const, text: answer || "No answer generated." },
-          ],
+          content: [{ type: "text" as const, text: answer || "No answer generated." }],
           details: {
             sessionPath: resolvedPath,
             question: params.question,
@@ -409,8 +403,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("handoff", {
-    description:
-      "Create a new session with inherited context and auto-submit draft",
+    description: "Create a new session with inherited context and auto-submit draft",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("/handoff requires interactive mode", "error");
@@ -424,10 +417,7 @@ export default function (pi: ExtensionAPI) {
 
       let goal = args.trim();
       if (!goal) {
-        const entered = await ctx.ui.input(
-          "handoff goal",
-          "What should the new thread do?",
-        );
+        const entered = await ctx.ui.input("handoff goal", "What should the new thread do?");
         if (!entered?.trim()) {
           ctx.ui.notify("Handoff cancelled", "info");
           return;
@@ -437,10 +427,7 @@ export default function (pi: ExtensionAPI) {
 
       const branch = ctx.sessionManager.getBranch();
       const messages = branch
-        .filter(
-          (entry): entry is SessionEntry & { type: "message" } =>
-            entry.type === "message",
-        )
+        .filter((entry): entry is SessionEntry & { type: "message" } => entry.type === "message")
         .map((entry) => entry.message);
 
       if (messages.length === 0) {
@@ -452,67 +439,56 @@ export default function (pi: ExtensionAPI) {
       const conversationText = serializeConversation(llmMessages);
       const currentSessionFile = ctx.sessionManager.getSessionFile();
 
-      const generatedPrompt = await ctx.ui.custom<string | null>(
-        (tui, theme, _kb, done) => {
-          const loader = new BorderedLoader(
-            tui,
-            theme,
-            "Generating handoff draft...",
-          );
-          loader.onAbort = () => done(null);
+      const generatedPrompt = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+        const loader = new BorderedLoader(tui, theme, "Generating handoff draft...");
+        loader.onAbort = () => done(null);
 
-          const run = async () => {
-            const auth = await ctx.modelRegistry.getApiKeyAndHeaders(
-              ctx.model!,
-            );
-            if (!auth.ok || !auth.apiKey) {
-              throw new Error(
-                auth.ok ? `No API key for ${ctx.model!.provider}` : auth.error,
-              );
-            }
+        const run = async () => {
+          const model = await selectHandoffModel(ctx.model!, ctx.modelRegistry);
+          const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+          if (!auth.ok || !auth.apiKey) {
+            throw new Error(auth.ok ? `No API key for ${model.provider}` : auth.error);
+          }
 
-            const userMessage: Message = {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `## Source Session File\n\n${currentSessionFile ?? "(unknown)"}\n\n## Conversation\n\n${conversationText}\n\n## Goal\n\n${goal}`,
-                },
-              ],
-              timestamp: Date.now(),
-            };
-
-            const response = await complete(
-              ctx.model!,
-              { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
+          const userMessage: Message = {
+            role: "user",
+            content: [
               {
-                apiKey: auth.apiKey,
-                headers: auth.headers,
-                signal: loader.signal,
+                type: "text",
+                text: `## Source Session File\n\n${currentSessionFile ?? "(unknown)"}\n\n## Conversation\n\n${conversationText}\n\n## Goal\n\n${goal}`,
               },
-            );
-
-            if (response.stopReason === "aborted") return null;
-
-            return response.content
-              .filter(
-                (c): c is { type: "text"; text: string } => c.type === "text",
-              )
-              .map((c) => c.text)
-              .join("\n")
-              .trim();
+            ],
+            timestamp: Date.now(),
           };
 
-          run()
-            .then(done)
-            .catch((err) => {
-              console.error("handoff generation failed", err);
-              done(null);
-            });
+          const response = await complete(
+            model,
+            { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
+            {
+              apiKey: auth.apiKey,
+              headers: auth.headers,
+              signal: loader.signal,
+            },
+          );
 
-          return loader;
-        },
-      );
+          if (response.stopReason === "aborted") return null;
+
+          return response.content
+            .filter((c): c is { type: "text"; text: string } => c.type === "text")
+            .map((c) => c.text)
+            .join("\n")
+            .trim();
+        };
+
+        run()
+          .then(done)
+          .catch((err) => {
+            console.error("handoff generation failed", err);
+            done(null);
+          });
+
+        return loader;
+      });
 
       if (!generatedPrompt) {
         ctx.ui.notify("Handoff cancelled", "info");
@@ -525,10 +501,7 @@ export default function (pi: ExtensionAPI) {
 
       const prefillDraft = `${parentSessionBlock}${generatedPrompt}`.trim();
 
-      const editedPrompt = await ctx.ui.editor(
-        "Edit handoff draft",
-        prefillDraft,
-      );
+      const editedPrompt = await ctx.ui.editor("Edit handoff draft", prefillDraft);
       if (editedPrompt === undefined) {
         ctx.ui.notify("Handoff cancelled", "info");
         return;
@@ -542,10 +515,7 @@ export default function (pi: ExtensionAPI) {
         withSession: async (newCtx) => {
           const newSessionFile = newCtx.sessionManager.getSessionFile();
           if (newSessionFile) {
-            newCtx.ui.notify(
-              `Switched to new session: ${newSessionFile}`,
-              "info",
-            );
+            newCtx.ui.notify(`Switched to new session: ${newSessionFile}`, "info");
           }
 
           newCtx.ui.setEditorText(editedPrompt);
