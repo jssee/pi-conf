@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { modelCliArg, resolveModel } from "./lib/model-profiles";
 
 const MAX_FILE_BYTES = 128 * 1024;
 const MAX_PATCH_CHARS = 4096;
@@ -504,6 +505,7 @@ function buildRepoSearchQuery(
 async function runLibrarianSubagent(
   cwd: string,
   prompt: string,
+  modelArg: string,
   signal: AbortSignal | undefined,
   onUpdate:
     | ((partial: {
@@ -605,6 +607,8 @@ Use read_github, list_directory_github, list_repositories, search_github, glob_g
       "--no-themes",
       "-e",
       SUBAGENT_EXTENSION_PATH,
+      "--model",
+      modelArg,
       "--append-system-prompt",
       promptPath,
       prompt,
@@ -1576,9 +1580,15 @@ export default function (pi: ExtensionAPI) {
           details: { phase: "booting" },
         });
 
+        const resolvedModel = await resolveModel(ctx, "smart");
+        if (!resolvedModel.ok) {
+          throw new Error(resolvedModel.error);
+        }
+
         const { finalText } = await runLibrarianSubagent(
           ctx.cwd,
           prompt,
+          modelCliArg(resolvedModel.model),
           signal,
           (partial) => {
             onUpdate?.(partial);
