@@ -16,7 +16,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getModelProfile } from "./lib/model-profiles";
+import { describeModelProfile, getModelProfile } from "./lib/model-profiles";
 
 const STATUS_KEY = "handoff";
 const COUNTDOWN_SECONDS = 10;
@@ -419,16 +419,21 @@ export default function (pi: ExtensionAPI) {
       const conversationText = serializeConversation(llmMessages);
       const currentSessionFile = ctx.sessionManager.getSessionFile();
 
+      const profile = await getModelProfile(ctx, "fast");
+      if (!profile) {
+        ctx.ui.notify("No model available for handoff", "error");
+        return;
+      }
+
       const generatedPrompt = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-        const loader = new BorderedLoader(tui, theme, "Generating handoff draft...");
+        const loader = new BorderedLoader(
+          tui,
+          theme,
+          `Generating handoff draft (${describeModelProfile(profile)})...`,
+        );
         loader.onAbort = () => done(null);
 
         const run = async () => {
-          const profile = await getModelProfile(ctx, "fast");
-          if (!profile) {
-            throw new Error("No model available for handoff");
-          }
-
           const userMessage: Message = {
             role: "user",
             content: [

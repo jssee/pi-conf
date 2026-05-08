@@ -21,7 +21,11 @@ import {
   truncateToWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { getModelProfile } from "./lib/model-profiles";
+import {
+  describeModelProfile,
+  getModelProfile,
+  type ResolvedModelProfile,
+} from "./lib/model-profiles";
 
 // Types
 interface QuestionOption {
@@ -738,16 +742,9 @@ async function lastAssistantText(ctx: ExtensionContext): Promise<string | false 
 
 async function extractQuestions(
   text: string,
-  ctx: ExtensionContext,
+  profile: ResolvedModelProfile,
   signal: AbortSignal,
 ): Promise<ExtractionResult | null> {
-  if (!ctx.model) return null;
-
-  const profile = await getModelProfile(ctx, "fast");
-  if (!profile) {
-    throw new Error("No model available for question extraction");
-  }
-
   const userMessage: UserMessage = {
     role: "user",
     content: [{ type: "text", text }],
@@ -793,11 +790,21 @@ export default function qna(pi: ExtensionAPI) {
       return;
     }
 
+    const profile = await getModelProfile(ctx, "fast");
+    if (!profile) {
+      ctx.ui.notify("No model available for question extraction", "error");
+      return;
+    }
+
     const extractionResult = await ctx.ui.custom<ExtractionResult | null>((tui, theme, _kb, done) => {
-      const loader = new BorderedLoader(tui, theme, "Extracting questions...");
+      const loader = new BorderedLoader(
+        tui,
+        theme,
+        `Extracting questions (${describeModelProfile(profile)})...`,
+      );
       loader.onAbort = () => done(null);
 
-      extractQuestions(text, ctx, loader.signal)
+      extractQuestions(text, profile, loader.signal)
         .then(done)
         .catch(() => done(null));
 

@@ -40,6 +40,13 @@ export type ResolvedModelProfile = {
   options: ModelAuth & { reasoning?: ModelThinkingLevel };
 };
 
+export function describeModelProfile(profile: ResolvedModelProfile): string {
+  const model = `${profile.model.provider}/${profile.model.id}`;
+  return profile.source === "profile"
+    ? `${profile.name}: ${model}`
+    : `active: ${model}`;
+}
+
 export async function getModelProfile(
   ctx: ExtensionContext,
   name: ModelProfileName,
