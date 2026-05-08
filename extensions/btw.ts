@@ -139,7 +139,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 interface BtwDetails {
   question: string;
@@ -241,40 +241,44 @@ export default function (pi: ExtensionAPI) {
         const italic = (s: string) => theme.fg("dim", theme.italic(s));
         const yellow = (s: string) => theme.fg("warning", s);
 
-        const parts: string[] = [];
+        return {
+          render(width: number) {
+            const rail = dim("│ ");
+            const contentWidth = Math.max(1, width - 2);
+            const parts: string[] = [
+              truncateToWidth(dim("💭 btw ── /btw:clear to dismiss"), width),
+            ];
 
-        const title = " 💭 btw ";
-        const hint = " /btw:clear to dismiss ";
-        const pad = Math.max(0, 50 - title.length - hint.length);
-        parts.push(dim(`╭${title}${"─".repeat(pad)}${hint}╮`));
+            const addRailText = (text: string) => {
+              for (const line of wrapTextWithAnsi(text, contentWidth)) {
+                parts.push(rail + line);
+              }
+            };
 
-        for (let i = 0; i < slots.length; i++) {
-          const s = slots[i];
-          if (i > 0) parts.push(dim("│ ───"));
-          parts.push(dim("│ ") + green("› ") + s.question);
-          if (s.thinking) {
-            const cursor = !s.answer && !s.done ? yellow(" ▍") : "";
-            parts.push(dim("│ ") + italic(s.thinking) + cursor);
-          }
-          if (s.answer) {
-            const answerLines = s.answer.split("\n");
-            parts.push(dim("│ ") + answerLines[0]);
-            if (answerLines.length > 1) {
-              parts.push(answerLines.slice(1).join("\n"));
+            for (let i = 0; i < slots.length; i++) {
+              const s = slots[i];
+              if (i > 0) parts.push(rail + dim("──"));
+              addRailText(green("› ") + s.question);
+              if (s.thinking) {
+                const cursor = !s.answer && !s.done ? yellow(" ▍") : "";
+                addRailText(italic(s.thinking) + cursor);
+              }
+              if (s.answer) {
+                const cursor = !s.done ? yellow(" ▍") : "";
+                addRailText(s.answer + cursor);
+              } else if (!s.thinking && !s.done) {
+                parts.push(rail + yellow("⏳ thinking..."));
+              }
             }
-            if (!s.done) parts[parts.length - 1] += yellow(" ▍");
-          } else if (!s.thinking && !s.done) {
-            parts.push(dim("│ ") + yellow("⏳ thinking..."));
-          }
-        }
 
-        if (widgetStatus) {
-          parts.push(dim("│ ") + yellow(widgetStatus));
-        }
+            if (widgetStatus) {
+              parts.push(rail + yellow(widgetStatus));
+            }
 
-        parts.push(dim(`╰${"─".repeat(50)}╯`));
-
-        return new Text(parts.join("\n"), 0, 0);
+            return parts;
+          },
+          invalidate() {},
+        };
       },
       { placement: "aboveEditor" },
     );
