@@ -16,14 +16,14 @@ const MODEL_PROFILES: Record<ModelProfileName, ModelProfile> = {
     reasoning: "low",
   },
   strong: {
-    provider: "anthropic",
-    id: "claude-sonnet-4-6",
+    provider: "openai",
+    id: "gpt-5.3-codex",
     reasoning: "medium",
   },
   deep: {
     provider: "openai",
-    id: "gpt-5.3-codex",
-    reasoning: "high",
+    id: "gpt-5.5",
+    reasoning: "xhigh",
   },
 };
 
