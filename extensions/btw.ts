@@ -47,9 +47,9 @@
 // — it won't try to pick up or continue unfinished work from the main
 // session.
 //
-// The response streams in a bordered widget above the editor using the
-// active model and thinking level. Multiple `/btw` calls accumulate in
-// the widget, separated by dividers.
+// The response streams in a compact widget above the editor using the
+// strong model profile. The widget shows only the latest response by
+// default; press ctrl+shift+b to expand/collapse it.
 //
 // ### Continuous threads
 //
@@ -63,8 +63,8 @@
 // the main agent to act on it:
 // - `/btw:inject` — sends the full thread verbatim as a user message
 // (delivered as a follow-up after the agent finishes)
-// - `/btw:summarize` — LLM-summarizes the thread first (using low
-// reasoning), then injects the summary
+// - `/btw:summarize` — LLM-summarizes the thread first (using the fast
+// model profile), then injects the summary
 // - Both accept optional instructions: `/btw:inject implement the auth
 // plan we discussed`
 // - Both clear the widget and reset the thread after injecting
@@ -87,12 +87,11 @@
 //
 // ### Widget
 //
-// - Renders above the editor as a component (no line limit)
-// - Bordered box with `╭╰│` left border
+// - Renders above the editor as a compact left-rail transcript
+// - Shows only the latest exchange by default
+// - Press ctrl+shift+b to expand/collapse long responses
 // - User messages shown with green `›` prefix
-// - Thinking content shown in dim italic with `│` on the first line
-// - Answer text shown with `│` on the first line, subsequent lines flow
-// freely (terminal handles wrapping)
+// - Thinking content shown in dim italic
 // - Streaming cursor `▍` shown while thinking or answering
 // - Status line shown at bottom of widget during `/btw:summarize`
 // - `/btw:clear` to dismiss and reset thread
@@ -105,8 +104,8 @@
 // │  User ↔ Agent (read, bash, edit, write...)  │
 // │                                             │
 // │  /btw fires a separate streamSimple() call  │
-// │  using the same model, thinking level,      │
-// │  and conversation context + a system prompt │
+// │  using the strong model profile,            │
+// │  conversation context + a system prompt     │
 // │  that frames it as an aside conversation    │
 // │                                             │
 // │  btw responses stream into a widget         │
@@ -140,6 +139,10 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import {
+  describeModelProfile,
+  getModelProfile,
+} from "./lib/model-profiles";
 
 interface BtwDetails {
   question: string;
@@ -181,6 +184,9 @@ export default function (pi: ExtensionAPI) {
   // Active widget slots — each /btw call gets one, streams into it
   const slots: BtwSlot[] = [];
   let widgetStatus: string | null = null;
+  let widgetExpanded = false;
+
+  const COLLAPSED_MAX_LINES = 6;
 
   // ── Restore state from session on reload/restart ─────────────────
 
@@ -245,8 +251,14 @@ export default function (pi: ExtensionAPI) {
           render(width: number) {
             const rail = dim("│ ");
             const contentWidth = Math.max(1, width - 2);
+            const toggleHint = widgetExpanded
+              ? "ctrl+shift+b collapse"
+              : "ctrl+shift+b expand";
             const parts: string[] = [
-              truncateToWidth(dim("💭 btw ── /btw:clear to dismiss"), width),
+              truncateToWidth(
+                dim(`💭 btw ── ${toggleHint} ── /btw:clear to dismiss`),
+                width,
+              ),
             ];
 
             const addRailText = (text: string) => {
@@ -255,24 +267,30 @@ export default function (pi: ExtensionAPI) {
               }
             };
 
-            for (let i = 0; i < slots.length; i++) {
-              const s = slots[i];
-              if (i > 0) parts.push(rail + dim("──"));
-              addRailText(green("› ") + s.question);
-              if (s.thinking) {
-                const cursor = !s.answer && !s.done ? yellow(" ▍") : "";
-                addRailText(italic(s.thinking) + cursor);
+            const latestSlot = slots[slots.length - 1];
+            if (latestSlot) {
+              addRailText(green("› ") + latestSlot.question);
+              if (latestSlot.thinking) {
+                const cursor = !latestSlot.answer && !latestSlot.done ? yellow(" ▍") : "";
+                addRailText(italic(latestSlot.thinking) + cursor);
               }
-              if (s.answer) {
-                const cursor = !s.done ? yellow(" ▍") : "";
-                addRailText(s.answer + cursor);
-              } else if (!s.thinking && !s.done) {
+              if (latestSlot.answer) {
+                const cursor = !latestSlot.done ? yellow(" ▍") : "";
+                addRailText(latestSlot.answer + cursor);
+              } else if (!latestSlot.thinking && !latestSlot.done) {
                 parts.push(rail + yellow("⏳ thinking..."));
               }
             }
 
             if (widgetStatus) {
               parts.push(rail + yellow(widgetStatus));
+            }
+
+            if (!widgetExpanded && parts.length > COLLAPSED_MAX_LINES) {
+              return [
+                ...parts.slice(0, COLLAPSED_MAX_LINES - 1),
+                rail + dim("… truncated, ctrl+shift+b to expand"),
+              ];
             }
 
             return parts;
@@ -415,16 +433,15 @@ export default function (pi: ExtensionAPI) {
     return all;
   }
 
-  function fireBtw(ctx: ExtensionContext, question: string) {
-    const model = ctx.model;
-    if (!model) {
-      ctx.ui.notify("No model selected", "error");
+  async function fireBtw(ctx: ExtensionContext, question: string) {
+    const profile = await getModelProfile(ctx, "strong");
+    if (!profile) {
+      ctx.ui.notify("No model available for btw chat", "error");
       return;
     }
 
-    const thinkingLevel = pi.getThinkingLevel();
-    const modelLabel = `${model.provider}/${model.id}`;
-    const allMessages = buildBtwMessages(ctx, model, question);
+    const modelLabel = describeModelProfile(profile);
+    const allMessages = buildBtwMessages(ctx, profile.model, question);
 
     // Create a slot for this btw call
     const slot: BtwSlot = {
@@ -439,22 +456,14 @@ export default function (pi: ExtensionAPI) {
 
     (async () => {
       try {
-        const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-        if (!auth.ok || !auth.apiKey) {
-          slot.answer = auth.ok ? "❌ No API key" : `❌ ${auth.error}`;
-          slot.done = true;
-          renderWidget(ctx);
-          return;
-        }
-
         const eventStream = streamSimple(
-          model,
+          profile.model,
           {
             systemPrompt:
               "You are having an aside conversation with the user, separate from their main working session. The main session messages are provided for context only — that work is being handled by another agent. Focus on answering the user's side questions, helping them think through ideas, or planning next steps. Do not act as if you need to complete or continue the main session's work.",
             messages: allMessages,
           },
-          { apiKey: auth.apiKey, headers: auth.headers, reasoning: thinkingLevel },
+          profile.options,
         );
 
         for await (const event of eventStream) {
@@ -496,6 +505,15 @@ export default function (pi: ExtensionAPI) {
   // Note: btw entries are stored via appendEntry (custom type, not in LLM context)
   // No context filter needed — custom entries don't participate in LLM context
 
+  pi.registerShortcut("ctrl+shift+b", {
+    description: "Toggle btw widget expansion",
+    handler: async (ctx) => {
+      if (slots.length === 0) return;
+      widgetExpanded = !widgetExpanded;
+      renderWidget(ctx);
+    },
+  });
+
   // ── Commands ─────────────────────────────────────────────────────
 
   pi.registerCommand("btw", {
@@ -507,7 +525,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("Usage: /btw <question>", "warning");
         return;
       }
-      fireBtw(ctx, question);
+      await fireBtw(ctx, question);
     },
   });
 
@@ -517,7 +535,7 @@ export default function (pi: ExtensionAPI) {
       resetThread(ctx);
       const question = args.trim();
       if (question) {
-        fireBtw(ctx, question);
+        await fireBtw(ctx, question);
       } else {
         ctx.ui.notify("💭 btw: started fresh thread", "info");
       }
@@ -566,28 +584,19 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const model = ctx.model;
-      if (!model) {
-        ctx.ui.notify("No model selected", "error");
+      const profile = await getModelProfile(ctx, "fast");
+      if (!profile) {
+        ctx.ui.notify("No model available for btw summary", "error");
         return;
       }
 
-      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-      if (!auth.ok || !auth.apiKey) {
-        ctx.ui.notify(
-          auth.ok ? `No API key for ${model.provider}/${model.id}` : auth.error,
-          "error",
-        );
-        return;
-      }
-
-      widgetStatus = "⏳ summarizing...";
+      widgetStatus = `⏳ summarizing (${describeModelProfile(profile)})...`;
       renderWidget(ctx);
 
       try {
         const threadText = formatThread(thread);
         const response = await completeSimple(
-          model,
+          profile.model,
           {
             messages: [
               {
@@ -609,7 +618,7 @@ export default function (pi: ExtensionAPI) {
               },
             ],
           },
-          { apiKey: auth.apiKey, headers: auth.headers, reasoning: "low" },
+          profile.options,
         );
 
         const summary = response.content
