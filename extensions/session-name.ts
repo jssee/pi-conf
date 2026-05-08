@@ -2,18 +2,12 @@
  * auto session naming — generates a short title from the first user message.
  *
  * fires on the `input` event so the name appears while the agent is still
- * thinking. uses haiku for speed/cost. only names the session once.
+ * thinking. uses the fast model profile for speed/cost. only names the session once.
  */
 
-import {
-  complete,
-  type Api,
-  type Model,
-  type Message,
-} from "@earendil-works/pi-ai";
+import { complete, type Message } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-
-const NAMING_MODEL = { provider: "google", id: "gemini-flash-latest" } as const;
+import { getModelProfile, type ResolvedModelProfile } from "./lib/model-profiles";
 
 export default function (pi: ExtensionAPI) {
   let named = false;
@@ -31,13 +25,9 @@ export default function (pi: ExtensionAPI) {
 
     named = true;
 
-    const model =
-      ctx.modelRegistry.find(NAMING_MODEL.provider, NAMING_MODEL.id) ??
-      ctx.model;
-    if (!model) return;
-
     // fire and forget — don't block the input pipeline
-    generateName(model, ctx.modelRegistry, text)
+    getModelProfile(ctx, "fast")
+      .then((profile) => (profile ? generateName(profile, text) : null))
       .then((name) => {
         if (name) pi.setSessionName(name);
       })
@@ -50,18 +40,9 @@ export default function (pi: ExtensionAPI) {
 }
 
 async function generateName(
-  model: Model<Api>,
-  registry: {
-    getApiKeyAndHeaders(model: Model<Api>): Promise<
-      | { ok: true; apiKey?: string; headers?: Record<string, string> }
-      | { ok: false; error: string }
-    >;
-  },
+  profile: ResolvedModelProfile,
   userMessage: string,
 ): Promise<string | null> {
-  const auth = await registry.getApiKeyAndHeaders(model);
-  if (!auth.ok || !auth.apiKey) return null;
-
   const message: Message = {
     role: "user",
     content: [
@@ -74,9 +55,9 @@ async function generateName(
   };
 
   const response = await complete(
-    model,
+    profile.model,
     { messages: [message] },
-    { apiKey: auth.apiKey, headers: auth.headers, maxTokens: 20 },
+    { ...profile.options, maxTokens: 20 },
   );
   if (response.stopReason === "aborted") return null;
 

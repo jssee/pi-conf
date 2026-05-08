@@ -145,7 +145,7 @@ Automatic session naming.
 
 - listens on the first meaningful `input`
 - skips slash commands and very short inputs
-- prefers `google/gemini-flash-latest`, falling back to the active model
+- uses the `fast` model profile, falling back to the active model
 - sets a short lowercase session title once per session
 
 ### `extensions/webfetch/index.ts`
