@@ -51,7 +51,7 @@ Q&A workflow.
 - shortcut: `Ctrl+.`
 - the tool asks one or more interactive single-select, multi-select, or freeform questions
 - `/answers` extracts questions from the last completed assistant message, then asks them with the same TUI
-- extraction prefers `gpt-5.1-codex-mini`, then `claude-haiku-4-5`, then falls back to the active model
+- extraction uses the `fast` model profile, falling back to the active model
 
 ### `extensions/btw.ts`
 Side-channel conversation widget.
@@ -74,7 +74,7 @@ Session handoff workflow plus prior-session lookup.
 
 - command: `/handoff`
 - tool: `session_query`
-- generates a structured handoff document from the current conversation
+- generates a structured handoff document from the current conversation using the `fast` model profile, falling back to the active model
 - opens a new session with `parentSession` set
 - prefills the new editor and auto-submits after 10 seconds unless the user edits or cancels
 - clears pending auto-submit state on session changes and shutdown

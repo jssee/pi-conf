@@ -5,7 +5,7 @@
  * - /answers command: extracts questions from the last assistant message, then asks them.
  */
 
-import { complete, type Api, type Model, type UserMessage } from "@earendil-works/pi-ai";
+import { complete, type UserMessage } from "@earendil-works/pi-ai";
 import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 import type {
   AgentToolResult,
@@ -21,6 +21,7 @@ import {
   truncateToWidth,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { getModelProfile } from "./lib/model-profiles";
 
 // Types
 interface QuestionOption {
@@ -129,40 +130,6 @@ Rules:
 - Be concise with question text
 - Include context only when it provides essential information for answering
 - If no questions are found, return {"questions": []}`;
-
-const CODEX_MODEL_ID = "gpt-5.1-codex-mini";
-const HAIKU_MODEL_ID = "claude-haiku-4-5";
-
-async function selectExtractionModel(
-  currentModel: Model<Api>,
-  modelRegistry: {
-    find: (provider: string, modelId: string) => Model<Api> | undefined;
-    getApiKeyAndHeaders(model: Model<Api>): Promise<
-      | { ok: true; apiKey?: string; headers?: Record<string, string> }
-      | { ok: false; error: string }
-    >;
-  },
-): Promise<Model<Api>> {
-  const codexModel = modelRegistry.find("openai-codex", CODEX_MODEL_ID);
-  if (codexModel) {
-    const auth = await modelRegistry.getApiKeyAndHeaders(codexModel);
-    if (auth.ok && auth.apiKey) {
-      return codexModel;
-    }
-  }
-
-  const haikuModel = modelRegistry.find("anthropic", HAIKU_MODEL_ID);
-  if (!haikuModel) {
-    return currentModel;
-  }
-
-  const auth = await modelRegistry.getApiKeyAndHeaders(haikuModel);
-  if (!auth.ok || !auth.apiKey) {
-    return currentModel;
-  }
-
-  return haikuModel;
-}
 
 function parseExtractionResult(text: string): ExtractionResult | null {
   try {
@@ -776,10 +743,9 @@ async function extractQuestions(
 ): Promise<ExtractionResult | null> {
   if (!ctx.model) return null;
 
-  const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry);
-  const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
-  if (!auth.ok || !auth.apiKey) {
-    throw new Error(auth.ok ? "No API key" : auth.error);
+  const profile = await getModelProfile(ctx, "fast");
+  if (!profile) {
+    throw new Error("No model available for question extraction");
   }
 
   const userMessage: UserMessage = {
@@ -789,9 +755,9 @@ async function extractQuestions(
   };
 
   const response = await complete(
-    extractionModel,
+    profile.model,
     { systemPrompt: EXTRACTION_SYSTEM_PROMPT, messages: [userMessage] },
-    { apiKey: auth.apiKey, headers: auth.headers, signal },
+    { ...profile.options, signal },
   );
 
   if (response.stopReason === "aborted") {
