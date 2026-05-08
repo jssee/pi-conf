@@ -10,8 +10,8 @@ import {
   type Api,
   type Model,
   type Message,
-} from "@mariozechner/pi-ai";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-ai";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const NAMING_MODEL = { provider: "google", id: "gemini-flash-latest" } as const;
 

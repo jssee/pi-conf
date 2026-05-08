@@ -5,13 +5,13 @@
  * - /answers command: extracts questions from the last assistant message, then asks them.
  */
 
-import { complete, type Api, type Model, type UserMessage } from "@mariozechner/pi-ai";
-import { BorderedLoader } from "@mariozechner/pi-coding-agent";
+import { complete, type Api, type Model, type UserMessage } from "@earendil-works/pi-ai";
+import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 import type {
   AgentToolResult,
   ExtensionAPI,
   ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   Editor,
   type EditorTheme,
@@ -19,7 +19,7 @@ import {
   matchesKey,
   Text,
   truncateToWidth,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 // Types

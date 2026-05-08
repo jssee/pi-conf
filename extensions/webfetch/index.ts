@@ -1,13 +1,13 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   truncateHead,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
   formatSize,
-} from "@mariozechner/pi-coding-agent";
-import { StringEnum } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { Text } from "@mariozechner/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import TurndownService from "turndown";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

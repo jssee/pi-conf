@@ -1,17 +1,17 @@
-import { complete, type Api, type Message, type Model } from "@mariozechner/pi-ai";
+import { complete, type Api, type Message, type Model } from "@earendil-works/pi-ai";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
   SessionEntry,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   BorderedLoader,
   SessionManager,
   convertToLlm,
   serializeConversation,
-} from "@mariozechner/pi-coding-agent";
-import { Key, matchesKey } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { Key, matchesKey } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as os from "node:os";
